@@ -1,0 +1,26 @@
+;消息循环
+;MSG结构
+MSG STRUCT
+ hwnd 		DWORD		?			;消息要发向的窗口句柄
+ message	DWORD		?			;消息标识头,在头文件中以WM_开头的预定义值
+ wParam		DWORD		?			;消息的参数之一
+ lParam		DWORD		?			;消息的参数之二
+ time		DWORD		?			;消息放入消息队列的时间
+ pt			POINT		<>			;这是一个POINT数据结构,表示消息放入消息队列时的鼠标坐标
+MSG ENDS
+;GetMessage函数是从消息队列中取得这样一条消息
+;GetMessage函数从消息队列里取得消息,填好MSG结构并返回.
+;TranslateMessage将MSG结构传给Windows进行一些键盘消息的转换
+;DispatchMessage将消息发送到窗口对应的窗口过程去处理.窗口过程返回后DispatchMessage函数才返回,然后开始新一轮消息循环.
+;PeekMessage和一些代码配合,可以使程序在20ms时间片内且程序空闲,时间片不会被拿走,可以用这个时间片处理其他程序.
+;PeekMessage的返回和GetMessage不同
+;GetMessage:
+;如果函数检索除WM_QUIT之外的消息，返回值是非零的。
+;如果函数检索WM_QUIT消息，返回值为零。
+;如果有错误，返回值为-1。例如，如果hWnd是无效的窗口句柄，或者lpMsg是无效的指针，那么函数就会失败。要获得扩展的错误信息，请调用GetLastError。
+;PeekMessage:
+;如果PeekMessage取回消息,在eax中返回非零值
+;如果PeekMessage没有取回消息,消息队列中没有消息,在eax中返回零.
+;返回非零值的时候,程序会检查消息是否是WM_OUIT,是则结束消息循环,不是则用标准流程处理消息
+;如果返回零值,表示是空闲时间,程序就可以做其他事情.
+;PeekMessage前面四个参数和GetMessage是相同的,增加最后一个参数表示在取回消息以后,对消息队列中的消息是否保留.
