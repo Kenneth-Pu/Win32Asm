@@ -1,0 +1,77 @@
+;窗口过程
+;对窗口过程的子程序名并没有规定,对Windows来说,窗口过程的地址才是唯一需要的.
+;窗口过程子程序,第一个参数是窗口句柄,第二个参数是消息标识,后面两个参数是消息的两个参数.
+;该过程主要是对uMsg参数中的消息编号构成一个分支结构,对于需要处理的消息分别处理.不敢兴趣的消息则交给DefWindowProc来处理.
+;要注意的是,窗口过程中要注意保存eax,edi,esi和ebp寄存器,Windows内部将这4个寄存器当指针使用,如果返回时改变了他们的值,程序马上会崩溃.
+;uses伪操作来保护这些寄存器的值.
+;所有由应用程序提供给Windows的回调函数都必须遵守这个规定.
+;uMsg参数指定的消息有一定的范围,Windows标准窗口中已经预定的值在0~03ffh之间,用户可以自定义一些消息.
+;通过SendMessage等函数传递给窗口过程做自定义处理工作,这时可以使用的值是从0400h开始的
+;WM_USER就定义为00000400h,当程序员定义多个用户消息的时候,一般使用WM_USER+1,WM_USER+2,...之类的定义方法.
+;wParam和lParam参数是消息所附带的参数,它随消息的不同而不同,对于不同的消息,它们的含义必须分别从手册中查明.
+;在WM_MOUSEMOVE消息中,wParam是标志,lParam是鼠标位置;而在WM_GETTEXT消息中,wParam是要获取的字符数,lParam是缓冲区地址;而对于WM_COPY消息来说,它不需要额外的信息,所以两个参数都没有定义.
+;处理了不同的消息,必须返回规定的值给Windows,返回值也需要分别从手册中查明
+;处理WM_CREATE消息的时候,返回0表示成功;如果程序无法初始化,如申请内存失败,那么可以返回-1,Windows就不会继续窗口的创建过程.
+;大部分的消息处理以后都以返回0表示成功,所以程序中把默认的返回语句放在最后,把eax清0返回.
+;如果在处理某个消息的时候需要返回不同的值,可以在分支中将eax赋值后直接用ret指令返回.
+;对于DefWindowProc的返回值,不对它进行干涉,直接将eax不做修改地用ret返回.
+;WM_CLOSE消息是按下了窗口右上角的"关闭"按钮后收到的,程序可以在这里处理和关闭窗口的事情,一般是相关资源的释放工作,如释放内存,保存工作和提示用户是否保存工作等.
+;当窗口决定关闭的时候,需要程序自己调用DestroyWindow来摧毁窗口,并用PostQuitMessage向消息循环发送WM_QUIT消息来退出消息循环.
+;调用PostQuitMessage时的参数是退出码,就是GetMessage收到WM_QUIT后MSG结构wParam字段中的内容,在这使用NULL.
+;窗口过程收到的消息是有一定顺序的,收到第一条消息并不是从消息循环开始以后而是在CreateWindowEx中就开始了
+;显示和刷新窗口的函数ShowWindow和UpdateWindow也向窗口过程发送消息.
+;调用CreateWindowEx和ShowWindow的时候窗口过程收到的消息:
+;调用CreateWindowEx:
+;		消息发生						说明
+;WM_GETMINMAXINFO				获取窗口大小,以便初始化
+;WM_NCCREATE					非客户区开始建立
+;WM_NCCALCSIZE					计算客户区大小
+;WM_CREATE						窗口建立
+
+;调用ShowWindow:
+;		消息发生						说明
+;WM_SHOWWINDOW					显示窗口
+;WM_WINDOWPOSCHANGING			窗口位置准备改变
+;WM_ACTIVATEAPP					窗口准备激活
+;WM_nCACTIVATE					激活状态改变
+;WM_GETTEXT						取窗口名称(显示标题栏用)
+;WM_ACTIVATE					窗口准备激活
+;WM_SETFOCUS					窗口获得焦点
+;WM_NCPAINT						需要绘画窗口边框
+;WM_ERASEBKGND					需要擦除背景
+;WM_WINDOWPOSCHANGED			窗口位置已经改变
+;WM_SIZE						窗口大小已经改变
+;WM_MOVE						窗口位置已经移动
+;然后程序执行UpdateWindow,这个函数仅仅向窗口过程发送一条WM_PAINT消息
+;调用DestroyWindow:
+;WM_NCACTIVATE					窗口激活状态改变
+;WM_ACTIVATE					窗口准备非激活
+;WM_ACTIVATEAPP					窗口准备非激活
+;WM_KILLFOCUS					失去焦点
+;WM_DESTROY						窗口即将被摧毁
+;WM_NCDESTROY					窗口的非客户区及所有子窗口已经被摧毁
+;大部分的消息都不需要程序自己关心,Windows只是尽义务通知窗口过程而已,窗口过程转手交给DefWindowProc去处理了
+;WM_CREATE---放置窗口初始化代码,如建立各种子窗口(状态栏和工具栏等).
+;WM_SIZE-----放置位置安排代码,因为建立的子窗口可能需要随窗口大小的改变而位置移动
+;WM_PAINT----如果需要自己绘制客户区,则在这里安排代码.
+;WM_CLOSE----向用户确认是否退出,如果退出则摧毁窗口并发送WM_QUIT消息.
+;WM_DESTROY--窗口摧毁,在这里放置释放资源等扫尾代码.
+;处理WM_PAINT消息来绘制客户区,窗口过程先通过BeginPaint获取窗口客户区的"设备环境"句柄,然后通过GetClientRect获取客户区的大小
+;最后通过DrawText函数将字符串按照取得的屏幕大小居中写到"设备环境"中,也就是窗口上.
+;消息的默认处理----DefWindowProc
+;Windows预定义的消息范围是0~03ffh,共预留了1024个消息编号,实际已定义的消息数目有几百个,大部分对于窗口的运行来说都是必须的.
+;对于Windows来说,它并不关心消息在窗口过程中是程序用自己的代码处理的还是用DefWindowProc处理的,它只看eax中的返回值来了解处理的结果.
+;所以不管是谁处理的,都必须在eax中返回正确的值.
+;DefWindowProc返回时eax中就是它对消息的处理结果,程序只要直接把eax传回给Windows就行了,所以在例子程序中,DefWindowProc后面直接用一句ret指令返回.
+;DefWindowProc对一些消息的默认处理:
+;WM_PAINT---发送WM_ERASEBKGND消息来擦除背景
+;WM_ERASEBKGND---用窗口类结构中的hbrBackground刷子来绘制窗口背景
+;WM_CLOSE---调用DestroyWindow来摧毁窗口
+;WM_NCLBUTTONDBLCLK---这是非客户区(如标题栏)鼠标双击消息,DefWindowProc测试鼠标的位置,然后再采取相应的措施,如标题栏双击将最大化和恢复窗口.
+;WM_NCLBUTTONUP---这是非客户区鼠标释放消息,同样,DefWindowProc测试鼠标的位置,然后再采取相应的措施,如鼠标在'关闭'按钮的位置释放将导致发送WM_CLOSE消息.
+;WM_NCPAINT---非客户区绘制消息,DefWindowProc将绘制边框和客户区.
+;DefWindowProc对WM_CLOSE的默认处理是调用DestroyWindow摧毁窗口.
+;DestroyWindow会引发一个WM_DESTROY消息,WM_CLOSE和WM_DESTROY的不同之处是:
+;WM_CLOSE代表用户有关闭窗口的意向,窗口过程有权不"服从"
+;收到WM_DESTROY的时候窗口已经在关闭过程中了,不管窗口过程愿不愿意,窗口关闭已经是不可挽回的事了.
+;对于这两个消息,窗口过程必须处理一个,因为必须有个地方发送WM_QUIT消息来结束消息循环.
